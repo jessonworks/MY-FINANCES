@@ -47,6 +47,7 @@ export default function App() {
   const [toasts, setToasts] = useState<{ id: number; message: string; type: 'success' | 'error' }[]>([]);
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [configError, setConfigError] = useState<string | null>(null);
 
   // Form state
   const [formData, setFormData] = useState({
@@ -67,6 +68,7 @@ export default function App() {
   }
 
   useEffect(() => {
+    checkSupabaseConfig();
     fetchTransactions();
     
     // Real-time subscription
@@ -83,6 +85,30 @@ export default function App() {
       supabase.removeChannel(channel);
     };
   }, []);
+
+  async function checkSupabaseConfig() {
+    const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+    const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+
+    if (!supabaseUrl || !supabaseAnonKey || supabaseUrl.includes('your-project-url')) {
+      setConfigError('Supabase não configurado. Adicione VITE_SUPABASE_URL e VITE_SUPABASE_ANON_KEY nas configurações.');
+      return;
+    }
+
+    // Test connection by fetching one row
+    try {
+      const { error } = await supabase.from('transacoes').select('id').limit(1);
+      if (error) {
+        if (error.code === '42P01') { // Relation does not exist
+          setConfigError('A tabela "transacoes" não existe. Execute o script SQL no Supabase.');
+        } else {
+          setConfigError(`Erro de conexão: ${error.message}`);
+        }
+      }
+    } catch (err) {
+      setConfigError('Erro ao conectar com o Supabase.');
+    }
+  }
 
   async function fetchTransactions() {
     try {
@@ -190,9 +216,9 @@ export default function App() {
       // Recarrega a lista para garantir sincronia
       await fetchTransactions();
       
-    } catch (err) {
+    } catch (err: any) {
       console.error('Erro ao salvar transação:', err);
-      showToast('Erro ao salvar transação', 'error');
+      showToast(`Erro: ${err.message || 'Falha ao salvar'}`, 'error');
     }
   }
 
@@ -266,6 +292,23 @@ export default function App() {
 
       {/* Header & Toggle */}
       <header className="flex flex-col gap-6 mb-8">
+        {configError && (
+          <motion.div 
+            initial={{ opacity: 0, scale: 0.95 }}
+            animate={{ opacity: 1, scale: 1 }}
+            className="bg-rose-500/10 border border-rose-500/30 p-4 rounded-xl flex items-start gap-3"
+          >
+            <AlertCircle className="text-rose-500 shrink-0 mt-0.5" size={18} />
+            <div className="text-sm">
+              <p className="text-rose-500 font-bold">Erro de Configuração</p>
+              <p className="text-zinc-400 mt-1">{configError}</p>
+              <p className="text-zinc-500 text-xs mt-2">
+                Certifique-se de ter configurado as variáveis de ambiente e executado o script SQL.
+              </p>
+            </div>
+          </motion.div>
+        )}
+
         <div className="flex items-center justify-between">
           <h1 className="text-2xl font-bold tracking-tight">Finanças Pro</h1>
           <div className="bg-zinc-900 p-1 rounded-xl flex gap-1">
